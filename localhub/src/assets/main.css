@@ -1,0 +1,9 @@
+html, body, #app {
+  margin: 0;
+  height: 100%;
+}
+.home {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 16px;
+}
