@@ -19,6 +19,9 @@ import ChatbotWidget from './components/chatbot/ChatbotWidget.vue'
           <router-link to="/community" class="app-nav__link" active-class="app-nav__link--active">
             커뮤니티
           </router-link>
+          <router-link to="/calendar" class="app-nav__link" active-class="app-nav__link--active">
+            캘린더
+          </router-link>
         </nav>
       </div>
     </header>

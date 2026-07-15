@@ -336,6 +336,7 @@ function resetView() {
 }
 
 // locateAndOpen: 외부에서 호출해 지도 이동 + 팝업 열기
+// locateAndOpen: 외부에서 호출해 지도 이동 + 기존 마커의 상세 팝업을 그대로 열기
 function locateAndOpen({ id, lat, lng, name }) {
   if (!map) return
   if (lat == null || lng == null) return
@@ -344,41 +345,61 @@ function locateAndOpen({ id, lat, lng, name }) {
   const targetZoom = isDetailView ? map.getZoom() : Math.min(base + ZOOM_STEP, MAX_ZOOM)
 
   isDetailView = true
-  map.setView([lat, lng], targetZoom, { animate: true })
 
-  // 기본 팝업 HTML (이름만)
-  let popupHtml = `<div class="popup-content travel-popup-content"><strong>${name || '장소'}</strong></div>`
-
-  // 가능한 경우: props.categoryData에서 id로 원본 포인트 찾기
-  let found = null
-  const catKeys = Object.keys(props.categoryData || {})
-  for (const key of catKeys) {
-    const arr = props.categoryData[key] || []
-    const p = arr.find((pt) => String(pt.id) === String(id))
-    if (p) { found = { point: p, catKey: key }; break }
-  }
-
-  // 여행코스 포인트에서도 찾기
-  if (!found) {
-    const tm = travelMarkers.find((t) => String(t.point.id) === String(id))
-    if (tm) found = { point: tm.point, catKey: null }
-  }
-
-  // 찾았으면 기존 팝업 생성 로직 재사용
-  if (found && found.point) {
-    const pt = found.point
-    if (found.catKey) {
-      const cat = CATEGORY_CONFIG.find((c) => c.key === found.catKey)
-      popupHtml = cat ? buildCategoryPopupHtml(pt, cat) : buildTravelPopupHtml(pt)
-    } else {
-      popupHtml = buildTravelPopupHtml(pt)
+  // 여행코스/주변 마커 목록에서 동일 id를 가진 "기존" 마커를 찾아 그 마커의 팝업을 그대로 연다
+  function openMatchedMarkerPopup() {
+    const travelMatch = travelMarkers.find((t) => String(t.point.id) === String(id))
+    if (travelMatch) {
+      travelMatch.marker.openPopup()
+      return true
     }
+
+    const nearbyMatch = nearbyMarkers.find((n) => String(n.point.id) === String(id))
+    if (nearbyMatch) {
+      nearbyMatch.marker.openPopup()
+      return true
+    }
+
+    return false
   }
 
-  L.popup({ minWidth: 160, maxWidth: 320 })
-    .setLatLng([lat, lng])
-    .setContent(popupHtml)
-    .openOn(map)
+  // 주변 마커(nearbyMarkers)는 moveend 시점에 다시 렌더링되므로,
+  // 지도 이동이 끝난 뒤(다음 프레임)에 마커를 찾아 팝업을 연다
+  function tryOpenAfterMove() {
+    requestAnimationFrame(() => {
+      if (!openMatchedMarkerPopup()) {
+        // 그래도 마커를 찾지 못한 경우(해당 카테고리 미선택 등)에 한해 최소한의 팝업으로 대체 표시
+        let popupHtml = `<div class="popup-content travel-popup-content"><strong>${name || '장소'}</strong></div>`
+
+        const catKeys = Object.keys(props.categoryData || {})
+        for (const key of catKeys) {
+          const arr = props.categoryData[key] || []
+          const p = arr.find((pt) => String(pt.id) === String(id))
+          if (p) {
+            const cat = CATEGORY_CONFIG.find((c) => c.key === key)
+            popupHtml = cat ? buildCategoryPopupHtml(p, cat) : buildTravelPopupHtml(p)
+            break
+          }
+        }
+
+        L.popup({ minWidth: 160, maxWidth: 320 })
+          .setLatLng([lat, lng])
+          .setContent(popupHtml)
+          .openOn(map)
+      }
+    })
+  }
+
+  const alreadyAtTarget =
+    map.getZoom() === targetZoom && map.getCenter().distanceTo([lat, lng]) < 1
+
+  if (alreadyAtTarget) {
+    // 이미 같은 위치/줌이면 moveend가 발생하지 않으므로 즉시 시도
+    tryOpenAfterMove()
+  } else {
+    map.once('moveend', tryOpenAfterMove)
+    map.setView([lat, lng], targetZoom, { animate: true })
+  }
 }
 
 // expose에 locateAndOpen 추가

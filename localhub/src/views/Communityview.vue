@@ -183,9 +183,13 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useCommunityPosts } from '../composables/useCommunityPosts'
 import { BOARD_MAIN_CATEGORIES, BOARD_SUB_CATEGORIES } from '../config/boardCategories'
+
+const route = useRoute()
+const router = useRouter()
 
 const { posts, addPost, getPostById, increaseView, verifyPostPassword, updatePost, deletePost } =
   useCommunityPosts()
@@ -226,6 +230,21 @@ function startWrite() {
   resetForm()
   mode.value = 'write'
 }
+
+// 캘린더 등 외부에서 "글쓰기" 요청으로 진입한 경우, 쿼리 값으로 폼을 미리 채움
+onMounted(() => {
+  if (route.query.write === '1') {
+    resetForm()
+    if (typeof route.query.mainCategory === 'string') {
+      mainCategoryInput.value = route.query.mainCategory
+    }
+    if (typeof route.query.title === 'string' && route.query.title) {
+      titleInput.value = `[${route.query.title}] `
+    }
+    mode.value = 'write'
+    router.replace({ path: '/community' })
+  }
+})
 
 async function handleSubmit() {
   formError.value = ''
