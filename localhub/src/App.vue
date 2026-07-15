@@ -11,6 +11,15 @@ import ChatbotWidget from './components/chatbot/ChatbotWidget.vue'
           <span class="app-header__logo-text">LocalHub</span>
         </router-link>
         <span class="app-header__tagline">서울 여행코스 & 주변 정보 지도</span>
+
+        <nav class="app-nav">
+          <router-link to="/" class="app-nav__link" exact-active-class="app-nav__link--active">
+            지도
+          </router-link>
+          <router-link to="/community" class="app-nav__link" active-class="app-nav__link--active">
+            커뮤니티
+          </router-link>
+        </nav>
       </div>
     </header>
 
@@ -85,6 +94,35 @@ import ChatbotWidget from './components/chatbot/ChatbotWidget.vue'
   color: var(--color-text-muted);
   padding-left: 12px;
   border-left: 1px solid var(--color-border);
+}
+
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.app-nav__link {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.app-nav__link:hover {
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--color-primary);
+}
+
+.app-nav__link--active {
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--color-primary);
 }
 
 .app-content {
