@@ -90,25 +90,47 @@ async function sendMessage() {
 
   isLoading.value = true
 
-  const context = await buildContext(text)
-  console.log('분류된 의도:', context.intent)
-  console.log('추출된 지역:', context.district)
-  console.log('필터링된 데이터:', context.items)
+  try {
+    const context = await buildContext(text)
+    console.log('분류된 의도:', context.intent)
+    console.log('추출된 지역:', context.district)
+    console.log('필터링된 데이터:', context.items)
 
-  if (context.items.length === 0) {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, context }),
+    })
+
+    const data = await res.json()
+
+    if (!res.ok) {
+      throw new Error(data.error || 'API 요청 실패')
+    }
+
+    if (context.items.length === 0) {
+      messages.value.push({
+        id: Date.now() + 1,
+        role: 'bot',
+        type: 'text',
+        text: data.reply,
+      })
+    } else {
+      messages.value.push({
+        id: Date.now() + 1,
+        role: 'bot',
+        type: 'results',
+        text: data.reply,
+        items: context.items.slice(0, 5),
+      })
+    }
+  } catch (err) {
+    console.error(err)
     messages.value.push({
       id: Date.now() + 1,
       role: 'bot',
       type: 'text',
-      text: '관련된 정보를 찾지 못했어요. 다른 키워드로 질문해보세요.',
-    })
-  } else {
-    messages.value.push({
-      id: Date.now() + 1,
-      role: 'bot',
-      type: 'results',
-      text: `[${context.intent}] 관련해서 이런 곳들을 찾았어요.`,
-      items: context.items.slice(0, 5),
+      text: '오류가 발생했어요. 잠시 후 다시 시도해주세요.',
     })
   }
 
