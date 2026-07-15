@@ -17,7 +17,11 @@ export function useRegionData() {
             lat: Number(item.mapy),
             lng: Number(item.mapx),
             addr: item.addr1,
-            image: item.firstimage2, // ✅ 팝업에 이미지 표시를 위해 추가
+            image: item.firstimage2,
+            // ✅ 축제공연행사 전용 필드 (다른 카테고리는 값이 없으므로 무시됨)
+            eventPlace: item.eventplace || '',
+            eventStartDate: item.eventstartdate || '',
+            eventEndDate: item.eventenddate || '',
           }))
         return [cat.key, points]
       }),
