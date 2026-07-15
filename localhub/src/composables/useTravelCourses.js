@@ -15,7 +15,7 @@ export function useTravelCourses() {
         lat: Number(item.mapy),
         lng: Number(item.mapx),
         addr: item.addr1,
-        image: item.firstimage,
+        image: item.firstimage2,
       }))
   })
 

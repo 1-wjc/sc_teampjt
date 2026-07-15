@@ -17,6 +17,7 @@ export function useRegionData() {
             lat: Number(item.mapy),
             lng: Number(item.mapx),
             addr: item.addr1,
+            image: item.firstimage2, // ✅ 팝업에 이미지 표시를 위해 추가
           }))
         return [cat.key, points]
       }),
