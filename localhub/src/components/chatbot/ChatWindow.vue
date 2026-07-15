@@ -22,6 +22,9 @@
             v-for="(item, idx) in msg.items"
             :key="idx"
             class="result-card"
+            @click="handleItemClick(item)"
+            role="button"
+            tabindex="0"
           >
             <img
               v-if="item.image"
@@ -75,6 +78,18 @@ const inputText = ref('')
 const isLoading = ref(false)
 const bodyRef = ref(null)
 
+// intent -> 표시용 라벨
+const INTENT_LABELS = {
+  festival: '축제/공연',
+  shopping: '쇼핑',
+  stay: '숙박',
+  culture: '문화시설',
+  leisure: '레포츠',
+  course: '여행코스',
+  attraction: '관광지',
+  general: '정보',
+}
+
 async function sendMessage() {
   const text = inputText.value.trim()
   if (!text) return
@@ -92,36 +107,66 @@ async function sendMessage() {
 
   try {
     const context = await buildContext(text)
-    console.log('분류된 의도:', context.intent)
-    console.log('추출된 지역:', context.district)
-    console.log('필터링된 데이터:', context.items)
 
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, context }),
-    })
+    // uiItems에 lat/lng 포함 (chatbotContext.js에서 이미 제공됨)
+    const uiItems = (context.items || []).slice(0, 5).map((it) => ({
+      id: it.id,
+      image: it.firstimage || '',
+      name: it.title || '',
+      addr: it.addr1 || '',
+      lat: it.lat ?? null,
+      lng: it.lng ?? null,
+    }))
 
-    const data = await res.json()
+    const intentLabel = INTENT_LABELS[context.intent] || context.intent || '정보'
+    const districtShort = context.district ? context.district.replace(/구$/, '') : ''
 
-    if (!res.ok) {
-      throw new Error(data.error || 'API 요청 실패')
+    let replyText = ''
+    if (uiItems.length > 0) {
+      if (districtShort) {
+        replyText = `${districtShort} 근처 ${intentLabel} 장소들을 추천해 드리겠습니다!`
+      } else {
+        replyText = `요청하신 ${intentLabel} 장소들을 추천해 드리겠습니다!`
+      }
+    } else {
+      if (districtShort) {
+        replyText = `${districtShort} 관련 ${intentLabel} 데이터가 없습니다. 데이터 업로드/상세요청/웹검색 허용 중 선택해주세요.`
+      } else {
+        replyText = `${intentLabel} 관련 데이터가 없습니다. 데이터 업로드/상세요청/웹검색 허용 중 선택해주세요.`
+      }
     }
 
-    if (context.items.length === 0) {
+    // 서버(LLM)에는 전체 항목을 보내지 않음 — 요약만 전송(선택)
+    try {
+      fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: text,
+          contextSummary: {
+            intent: context.intent,
+            district: context.district,
+            count: uiItems.length,
+            names: uiItems.map((i) => i.name),
+          },
+        }),
+      }).catch(() => {})
+    } catch (e) {}
+
+    if (uiItems.length === 0) {
       messages.value.push({
         id: Date.now() + 1,
         role: 'bot',
         type: 'text',
-        text: data.reply,
+        text: replyText,
       })
     } else {
       messages.value.push({
         id: Date.now() + 1,
         role: 'bot',
         type: 'results',
-        text: data.reply,
-        items: context.items.slice(0, 5),
+        text: replyText,
+        items: uiItems,
       })
     }
   } catch (err) {
@@ -136,6 +181,18 @@ async function sendMessage() {
 
   isLoading.value = false
   await scrollToBottom()
+}
+
+function handleItemClick(item) {
+  // item: { id, image, name, addr, lat, lng }
+  const detail = {
+    id: item.id,
+    name: item.name,
+    addr: item.addr,
+    lat: item.lat,
+    lng: item.lng,
+  }
+  window.dispatchEvent(new CustomEvent('locate-on-map', { detail }))
 }
 
 async function scrollToBottom() {
@@ -230,6 +287,7 @@ async function scrollToBottom() {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   padding: 6px;
+  cursor: pointer;
 }
 
 .result-image {

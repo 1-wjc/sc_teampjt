@@ -335,7 +335,54 @@ function resetView() {
   }
 }
 
-defineExpose({ resetView })
+// locateAndOpen: 외부에서 호출해 지도 이동 + 팝업 열기
+function locateAndOpen({ id, lat, lng, name }) {
+  if (!map) return
+  if (lat == null || lng == null) return
+
+  const base = baseZoom ?? 11
+  const targetZoom = isDetailView ? map.getZoom() : Math.min(base + ZOOM_STEP, MAX_ZOOM)
+
+  isDetailView = true
+  map.setView([lat, lng], targetZoom, { animate: true })
+
+  // 기본 팝업 HTML (이름만)
+  let popupHtml = `<div class="popup-content travel-popup-content"><strong>${name || '장소'}</strong></div>`
+
+  // 가능한 경우: props.categoryData에서 id로 원본 포인트 찾기
+  let found = null
+  const catKeys = Object.keys(props.categoryData || {})
+  for (const key of catKeys) {
+    const arr = props.categoryData[key] || []
+    const p = arr.find((pt) => String(pt.id) === String(id))
+    if (p) { found = { point: p, catKey: key }; break }
+  }
+
+  // 여행코스 포인트에서도 찾기
+  if (!found) {
+    const tm = travelMarkers.find((t) => String(t.point.id) === String(id))
+    if (tm) found = { point: tm.point, catKey: null }
+  }
+
+  // 찾았으면 기존 팝업 생성 로직 재사용
+  if (found && found.point) {
+    const pt = found.point
+    if (found.catKey) {
+      const cat = CATEGORY_CONFIG.find((c) => c.key === found.catKey)
+      popupHtml = cat ? buildCategoryPopupHtml(pt, cat) : buildTravelPopupHtml(pt)
+    } else {
+      popupHtml = buildTravelPopupHtml(pt)
+    }
+  }
+
+  L.popup({ minWidth: 160, maxWidth: 320 })
+    .setLatLng([lat, lng])
+    .setContent(popupHtml)
+    .openOn(map)
+}
+
+// expose에 locateAndOpen 추가
+defineExpose({ resetView, locateAndOpen })
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()

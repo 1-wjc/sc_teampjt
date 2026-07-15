@@ -67,34 +67,57 @@ export function extractDistrict(message) {
 }
 
 // 5. 컨텍스트용으로 필드 축소 (토큰 절약)
+// -> 반환 필드: id, firstimage, title, addr1 (요구하신 형식)
 function toContextItem(item) {
   return {
-    name: item.title,
-    addr: item.addr1,
-    tel: item.tel || '정보없음',
-    image: item.firstimage || '', // 이미지 없으면 빈 문자열
+    id: item.contentid,
+    firstimage: item.firstimage || '',
+    title: item.title || '',
+    addr1: item.addr1 || '',
+    // mapy = 위도(lat), mapx = 경도(lng) (문자열일 수 있으니 숫자로 변환)
+    lat: item.mapy ? parseFloat(item.mapy) : null,
+    lng: item.mapx ? parseFloat(item.mapx) : null,
   }
 }
-
 // 6. 최종: 질문 → 관련 데이터 목록 반환 (데이터는 fetch로 비동기 로드)
+// - district가 있으면 정확히 그 구(또는 구 이름 단수형)만 필터
+// - contentid로 중복 제거
+// - 기본 최대 개수는 10 (원하면 조정)
 export async function buildContext(message) {
   const intent = classifyIntent(message)
-  const district = extractDistrict(message)
+  const district = extractDistrict(message) // e.g. "용산구" 또는 "용산"
 
   const allData = await loadAllData()
 
-  let candidates =
-    allData[intent] ||
-    [...allData.attraction.slice(0, 10), ...allData.festival.slice(0, 10)]
+  let candidates = (allData[intent] && Array.isArray(allData[intent]))
+    ? allData[intent]
+    : [
+        ...(allData.attraction || []).slice(0, 10),
+        ...(allData.festival || []).slice(0, 10),
+      ]
 
   if (district) {
-    candidates = candidates.filter((item) => item.addr1.includes(district))
+    const short = district.replace(/구$/, '') // "용산구" -> "용산"
+    candidates = candidates.filter((item) => {
+      const addr = (item.addr1 || '')
+      return addr.includes(district) || addr.includes(short)
+    })
   }
 
-  // 너무 많으면 상위 15개만
+  // 중복 제거 (contentid)
+  const seen = new Set()
+  candidates = candidates.filter((it) => {
+    const id = it.contentid || it.title || JSON.stringify(it)
+    if (seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
+
+  // 결과 제한 (예: 최대 10개)
+  const maxResults = 10
   return {
     intent,
     district,
-    items: candidates.slice(0, 15).map(toContextItem),
+    items: candidates.slice(0, maxResults).map(toContextItem),
   }
 }

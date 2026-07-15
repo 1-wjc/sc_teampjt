@@ -68,7 +68,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import SeoulMap from '../components/SeoulMap.vue'
 import { useTravelCourses } from '../composables/useTravelCourses'
 import { useRegionData } from '../composables/useRegionData'
@@ -86,6 +86,21 @@ function handleReset() {
   popupCategories.value = []
   seoulMapRef.value?.resetView()
 }
+
+// 챗봇이 보낸 locate-on-map 이벤트 처리기
+function onLocateEvent(e) {
+  const d = e?.detail || {}
+  if (!d || d.lat == null || d.lng == null) return
+  seoulMapRef.value?.locateAndOpen({ id: d.id, lat: d.lat, lng: d.lng, name: d.name })
+}
+
+onMounted(() => {
+  window.addEventListener('locate-on-map', onLocateEvent)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('locate-on-map', onLocateEvent)
+})
 </script>
 
 <style scoped>
