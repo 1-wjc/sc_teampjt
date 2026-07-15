@@ -1,3 +1,7 @@
+<script setup>
+import ChatbotWidget from './components/chatbot/ChatbotWidget.vue'
+</script>
+
 <template>
   <div class="app-shell">
     <header class="app-header">
@@ -21,6 +25,8 @@
         <span>Data by TourAPI 4.0 (한국관광공사)</span>
       </div>
     </footer>
+
+    <ChatbotWidget />
   </div>
 </template>
 
