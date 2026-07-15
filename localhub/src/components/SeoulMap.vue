@@ -6,22 +6,14 @@
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import L from 'leaflet'
 import { CATEGORY_CONFIG } from '../config/mapCategories'
-import { distanceMeters } from '../utils/geo'
-
-L.Popup.mergeOptions({
-  autoPan: true,
-  autoPanPadding: [20, 20],
-  maxHeight: 320,
-})
 
 const props = defineProps({
   points: { type: Array, default: () => [] },
   categoryData: { type: Object, default: () => ({}) },
   selectedCategories: { type: Array, default: () => [] },
-  popupCategories: { type: Array, default: () => [] },
 })
 
-const emit = defineEmits(['update:popupCategories'])
+const emit = defineEmits(['select'])
 
 const mapEl = ref(null)
 let map = null
@@ -30,11 +22,11 @@ let nearbyLayer = null
 let travelMarkers = [] // { marker, point }
 let nearbyMarkers = [] // { marker, point, cat }
 let resizeObserver = null
+let activeMarkerPopup = null // 현재 선택된 마커의 제목만 표시하는 팝업
 
 const SEOUL_CENTER = [37.5665, 126.978]
 const ZOOM_STEP = 3
 const MAX_ZOOM = 18
-const POPUP_NEARBY_COUNT = 3
 
 let baseZoom = null
 let initialBounds = null
@@ -74,144 +66,36 @@ function createCategoryPinIcon(color) {
   return icon
 }
 
-// ✅ YYYYMMDD 문자열을 YYYY.MM.DD 형식으로 변환
-function formatEventDate(dateStr) {
-  if (!dateStr || dateStr.length !== 8) return dateStr || ''
-  return `${dateStr.slice(0, 4)}.${dateStr.slice(4, 6)}.${dateStr.slice(6, 8)}`
-}
+// 선택된 마커 위치에 제목만 담은 작은 팝업을 표시 (상세정보는 우측 패널에서 별도로 보여줌)
+function showTitlePopup(point) {
+  if (!map) return
 
-// 기준 지점에서, 선택된 카테고리별 "가장 가까운 장소" 목록 계산 (자기 자신 제외)
-function getNearestPointsByCategory(point) {
-  return CATEGORY_CONFIG.filter((cat) => props.popupCategories.includes(cat.key))
-    .map((cat) => {
-      const points = props.categoryData[cat.key] || []
-      const nearest = points
-        .filter((p) => p.id !== point.id)
-        .map((p) => ({ ...p, dist: distanceMeters([point.lat, point.lng], [p.lat, p.lng]) }))
-        .sort((a, b) => a.dist - b.dist)
-        .slice(0, POPUP_NEARBY_COUNT)
-      return { key: cat.key, label: cat.label, items: nearest }
-    })
-    .filter((group) => group.items.length > 0)
-}
-
-function buildMarkerPopupHtml(point, extraLineHtml = '') {
-  const nearestGroups = getNearestPointsByCategory(point)
-
-  const nearestHtml = nearestGroups
-    .map(
-      (group) => `
-        <div class="popup-nearby-group">
-          <span class="popup-nearby-group__label">${group.label}</span>
-          <ul class="popup-nearby-group__list">
-            ${group.items
-              .map(
-                (item) => `
-                  <li>
-                    <span class="popup-nearby-link" data-cat="${group.key}" data-id="${item.id}">${item.title}</span>
-                  </li>
-                `,
-              )
-              .join('')}
-          </ul>
-        </div>
-      `,
-    )
-    .join('')
-
-  const toggleHtml = CATEGORY_CONFIG.map(
-    (cat) => `
-      <label class="popup-toggle">
-        <input
-          type="checkbox"
-          class="popup-toggle-checkbox"
-          data-cat="${cat.key}"
-          ${props.popupCategories.includes(cat.key) ? 'checked' : ''}
-        />
-        <span class="popup-toggle__dot" style="background:${cat.color}"></span>
-        ${cat.label}
-      </label>
-    `,
-  ).join('')
-
-  return `
-    <div class="popup-content travel-popup-content">
-      <strong>${point.title}</strong>
-      ${extraLineHtml}
-      ${point.image ? `<img src="${point.image}" class="popup-content__image" />` : ''}
-      <div class="popup-toggle-group">
-        <div class="popup-toggle-group__title">가까운 장소 표시</div>
-        ${toggleHtml}
-      </div>
-      ${nearestHtml}
-    </div>
-  `
-}
-
-function buildTravelPopupHtml(point) {
-  return buildMarkerPopupHtml(point)
-}
-
-// ✅ 기타 마커 팝업: 축제공연행사(festival)는 [카테고리] → 행사장소 → 주소 → 행사기간 순으로 추가 표시
-function buildCategoryPopupHtml(point, cat) {
-  const isFestival = cat.key === 'festival'
-  const lines = [`[${cat.label}]`]
-
-  if (isFestival && point.eventPlace) {
-    lines.push(point.eventPlace)
+  if (activeMarkerPopup) {
+    map.closePopup(activeMarkerPopup)
+    activeMarkerPopup = null
   }
 
-  if (point.addr) {
-    lines.push(point.addr)
-  }
-
-  if (isFestival && (point.eventStartDate || point.eventEndDate)) {
-    lines.push(`${formatEventDate(point.eventStartDate)} ~ ${formatEventDate(point.eventEndDate)}`)
-  }
-
-  const extraLineHtml = `<br/>${lines.join('<br/>')}`
-  return buildMarkerPopupHtml(point, extraLineHtml)
+  activeMarkerPopup = L.popup({
+    closeButton: false,
+    autoClose: true,
+    closeOnClick: false,
+    className: 'marker-title-popup',
+    offset: [0, -4],
+  })
+    .setLatLng([point.lat, point.lng])
+    .setContent(point.title || '선택된 장소')
+    .openOn(map)
 }
 
-function handlePopupToggleChange(e) {
-  const target = e.target
-  if (!target.classList || !target.classList.contains('popup-toggle-checkbox')) return
-
-  const key = target.dataset.cat
-  const checked = target.checked
-  const next = checked
-    ? [...props.popupCategories, key]
-    : props.popupCategories.filter((k) => k !== key)
-
-  emit('update:popupCategories', next)
-}
-
-function handlePopupNearbyClick(e) {
-  const target = e.target.closest ? e.target.closest('.popup-nearby-link') : null
-  if (!target) return
-
-  const catKey = target.dataset.cat
-  const id = target.dataset.id
-  const cat = CATEGORY_CONFIG.find((c) => c.key === catKey)
-  if (!cat) return
-
-  const points = props.categoryData[catKey] || []
-  const point = points.find((p) => String(p.id) === id)
-  if (!point) return
-
-  openNearbyDetailPopup(point, cat)
-}
-
-function openNearbyDetailPopup(point, cat) {
+// 마커 선택: 지도 이동 + 제목 팝업 표시 + 부모에게 선택된 장소 정보 전달(상세정보는 부모의 사이드 패널에서 표시)
+function selectPoint(point, cat) {
   const targetZoom = isDetailView ? map.getZoom() : Math.min(baseZoom + ZOOM_STEP, MAX_ZOOM)
 
   isDetailView = true
   map.setView([point.lat, point.lng], targetZoom, { animate: true })
+  showTitlePopup(point)
 
-  L.popup({ minWidth: 160, maxWidth: 320 })
-    .setLatLng([point.lat, point.lng])
-    .setContent(buildCategoryPopupHtml(point, cat))
-    .openOn(map)
+  emit('select', { point, cat })
 }
 
 onMounted(() => {
@@ -224,9 +108,6 @@ onMounted(() => {
   travelLayer = L.layerGroup().addTo(map)
   nearbyLayer = L.layerGroup().addTo(map)
   renderTravelMarkers()
-
-  map.getPane('popupPane').addEventListener('change', handlePopupToggleChange)
-  map.getPane('popupPane').addEventListener('click', handlePopupNearbyClick)
 
   map.on('moveend', () => {
     if (map.getZoom() >= baseZoom + ZOOM_STEP) {
@@ -254,19 +135,6 @@ watch(
   { deep: true },
 )
 
-watch(
-  () => props.popupCategories,
-  () => {
-    travelMarkers.forEach(({ marker, point }) => {
-      marker.setPopupContent(buildTravelPopupHtml(point))
-    })
-    nearbyMarkers.forEach(({ marker, point, cat }) => {
-      marker.setPopupContent(buildCategoryPopupHtml(point, cat))
-    })
-  },
-  { deep: true },
-)
-
 function renderTravelMarkers() {
   if (!travelLayer || !map) return
   travelLayer.clearLayers()
@@ -280,8 +148,7 @@ function renderTravelMarkers() {
     latLngs.push(latLng)
 
     const marker = L.marker(latLng, { icon: redPinIcon })
-      .bindPopup(buildTravelPopupHtml(p), { minWidth: 160, maxWidth: 320 })
-      .on('click', () => onTravelMarkerClick(p))
+      .on('click', () => selectPoint(p, null))
       .addTo(travelLayer)
 
     travelMarkers.push({ marker, point: p })
@@ -290,15 +157,6 @@ function renderTravelMarkers() {
   map.fitBounds(L.latLngBounds(latLngs), { padding: [30, 30] })
   baseZoom = map.getZoom()
   initialBounds = map.getBounds()
-}
-
-function onTravelMarkerClick(point) {
-  const targetZoom = isDetailView
-    ? map.getZoom()
-    : Math.min(baseZoom + ZOOM_STEP, MAX_ZOOM)
-
-  isDetailView = true
-  map.setView([point.lat, point.lng], targetZoom, { animate: true })
 }
 
 function renderNearby() {
@@ -316,7 +174,7 @@ function renderNearby() {
       .filter((p) => bounds.contains([p.lat, p.lng]))
       .forEach((p) => {
         const marker = L.marker([p.lat, p.lng], { icon })
-          .bindPopup(buildCategoryPopupHtml(p, cat), { minWidth: 160, maxWidth: 320 })
+          .on('click', () => selectPoint(p, cat))
           .addTo(nearbyLayer)
 
         nearbyMarkers.push({ marker, point: p, cat })
@@ -328,6 +186,11 @@ function resetView() {
   nearbyLayer?.clearLayers()
   isDetailView = false
 
+  if (activeMarkerPopup) {
+    map.closePopup(activeMarkerPopup)
+    activeMarkerPopup = null
+  }
+
   if (initialBounds) {
     map.fitBounds(initialBounds)
   } else {
@@ -335,8 +198,7 @@ function resetView() {
   }
 }
 
-// locateAndOpen: 외부에서 호출해 지도 이동 + 팝업 열기
-// locateAndOpen: 외부에서 호출해 지도 이동 + 기존 마커의 상세 팝업을 그대로 열기
+// locateAndOpen: 외부(챗봇/캘린더)에서 호출해 지도 이동 + 제목 팝업 표시 + 상세정보 패널 갱신(select 이벤트로 부모에 전달)
 function locateAndOpen({ id, lat, lng, name }) {
   if (!map) return
   if (lat == null || lng == null) return
@@ -345,70 +207,41 @@ function locateAndOpen({ id, lat, lng, name }) {
   const targetZoom = isDetailView ? map.getZoom() : Math.min(base + ZOOM_STEP, MAX_ZOOM)
 
   isDetailView = true
+  map.setView([lat, lng], targetZoom, { animate: true })
 
-  // 여행코스/주변 마커 목록에서 동일 id를 가진 "기존" 마커를 찾아 그 마커의 팝업을 그대로 연다
-  function openMatchedMarkerPopup() {
-    const travelMatch = travelMarkers.find((t) => String(t.point.id) === String(id))
-    if (travelMatch) {
-      travelMatch.marker.openPopup()
-      return true
+  // categoryData / travelMarkers에서 원본 포인트와 카테고리 정보 찾기
+  let point = null
+  let cat = null
+
+  const catKeys = Object.keys(props.categoryData || {})
+  for (const key of catKeys) {
+    const arr = props.categoryData[key] || []
+    const p = arr.find((pt) => String(pt.id) === String(id))
+    if (p) {
+      point = p
+      cat = CATEGORY_CONFIG.find((c) => c.key === key) || null
+      break
     }
-
-    const nearbyMatch = nearbyMarkers.find((n) => String(n.point.id) === String(id))
-    if (nearbyMatch) {
-      nearbyMatch.marker.openPopup()
-      return true
-    }
-
-    return false
   }
 
-  // 주변 마커(nearbyMarkers)는 moveend 시점에 다시 렌더링되므로,
-  // 지도 이동이 끝난 뒤(다음 프레임)에 마커를 찾아 팝업을 연다
-  function tryOpenAfterMove() {
-    requestAnimationFrame(() => {
-      if (!openMatchedMarkerPopup()) {
-        // 그래도 마커를 찾지 못한 경우(해당 카테고리 미선택 등)에 한해 최소한의 팝업으로 대체 표시
-        let popupHtml = `<div class="popup-content travel-popup-content"><strong>${name || '장소'}</strong></div>`
-
-        const catKeys = Object.keys(props.categoryData || {})
-        for (const key of catKeys) {
-          const arr = props.categoryData[key] || []
-          const p = arr.find((pt) => String(pt.id) === String(id))
-          if (p) {
-            const cat = CATEGORY_CONFIG.find((c) => c.key === key)
-            popupHtml = cat ? buildCategoryPopupHtml(p, cat) : buildTravelPopupHtml(p)
-            break
-          }
-        }
-
-        L.popup({ minWidth: 160, maxWidth: 320 })
-          .setLatLng([lat, lng])
-          .setContent(popupHtml)
-          .openOn(map)
-      }
-    })
+  if (!point) {
+    const tm = travelMarkers.find((t) => String(t.point.id) === String(id))
+    if (tm) point = tm.point
   }
 
-  const alreadyAtTarget =
-    map.getZoom() === targetZoom && map.getCenter().distanceTo([lat, lng]) < 1
+  const resolvedPoint = point || { id, title: name || '장소', lat, lng }
+  showTitlePopup(resolvedPoint)
 
-  if (alreadyAtTarget) {
-    // 이미 같은 위치/줌이면 moveend가 발생하지 않으므로 즉시 시도
-    tryOpenAfterMove()
-  } else {
-    map.once('moveend', tryOpenAfterMove)
-    map.setView([lat, lng], targetZoom, { animate: true })
-  }
+  emit('select', {
+    point: resolvedPoint,
+    cat,
+  })
 }
 
-// expose에 locateAndOpen 추가
 defineExpose({ resetView, locateAndOpen })
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
-  map?.getPane('popupPane')?.removeEventListener('change', handlePopupToggleChange)
-  map?.getPane('popupPane')?.removeEventListener('click', handlePopupNearbyClick)
   map?.remove()
 })
 </script>
@@ -428,80 +261,21 @@ onBeforeUnmount(() => {
   border: none;
 }
 
-.popup-content {
-  width: max-content;
-  max-width: 260px;
+.marker-title-popup .leaflet-popup-content-wrapper {
+  padding: 4px 10px;
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
-.leaflet-popup-content {
-  overflow-x: hidden !important;
-}
-
-.popup-content__image {
-  display: block;
-  width: 100%;
-  margin-top: 6px;
-  border-radius: 6px;
-}
-
-.popup-nearby-group {
-  margin-top: 8px;
-  padding-top: 6px;
-  border-top: 1px solid #e5e7eb;
-}
-
-.popup-nearby-group__label {
-  font-size: 12px;
+.marker-title-popup .leaflet-popup-content {
+  margin: 2px 0;
+  font-size: 12.5px;
   font-weight: 700;
-  color: #374151;
+  color: #111827;
+  white-space: nowrap;
 }
 
-.popup-nearby-group__list {
-  margin: 4px 0 0;
-  padding-left: 16px;
-  font-size: 12px;
-  color: #4b5563;
-}
-
-.popup-nearby-link {
-  cursor: pointer;
-  color: #2563eb;
-}
-
-.popup-nearby-link:hover {
-  text-decoration: underline;
-}
-
-.popup-toggle-group {
-  margin-top: 8px;
-  padding-top: 6px;
-  border-top: 1px solid #e5e7eb;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.popup-toggle-group__title {
-  width: 100%;
-  font-size: 11px;
-  font-weight: 700;
-  color: #6b7280;
-  margin-bottom: 2px;
-}
-
-.popup-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: #374151;
-  cursor: pointer;
-}
-
-.popup-toggle__dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
+.marker-title-popup .leaflet-popup-tip {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 </style>

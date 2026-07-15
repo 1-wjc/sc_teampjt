@@ -2,24 +2,50 @@ import { ref, watch } from 'vue'
 import { hashPassword, verifyPassword as checkPassword } from '../utils/passwordHash'
 
 const STORAGE_KEY = 'localhub_community_posts'
+const LIKED_STORAGE_KEY = 'localhub_liked_post_ids'
 const DUMMY_PASSWORD = '1234'
 
 function loadPosts() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
+    const parsed = raw ? JSON.parse(raw) : []
+    // 기존에 저장된 글에 likes/comments 필드가 없을 수 있으므로 기본값으로 보정
+    return parsed.map((post) => ({
+      likes: 0,
+      comments: [],
+      ...post,
+    }))
   } catch (e) {
     console.error('게시글 데이터를 불러오지 못했습니다.', e)
     return []
   }
 }
 
+function loadLikedIds() {
+  try {
+    const raw = localStorage.getItem(LIKED_STORAGE_KEY)
+    return raw ? new Set(JSON.parse(raw)) : new Set()
+  } catch (e) {
+    console.error('좋아요 정보를 불러오지 못했습니다.', e)
+    return new Set()
+  }
+}
+
 const posts = ref(loadPosts())
+const likedPostIds = ref(loadLikedIds())
 
 watch(
   posts,
   (value) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(value))
+  },
+  { deep: true },
+)
+
+watch(
+  likedPostIds,
+  (value) => {
+    localStorage.setItem(LIKED_STORAGE_KEY, JSON.stringify([...value]))
   },
   { deep: true },
 )
@@ -79,6 +105,8 @@ async function seedDummyPostsIfEmpty() {
     createdAt: new Date(now - item.hoursAgo * 60 * 60 * 1000).toISOString(),
     updatedAt: null,
     views: item.views,
+    likes: Math.floor(item.views / 8),
+    comments: [],
   }))
 }
 
@@ -98,6 +126,8 @@ export function useCommunityPosts() {
       createdAt: new Date().toISOString(),
       updatedAt: null,
       views: 0,
+      likes: 0,
+      comments: [],
     }
     posts.value = [newPost, ...posts.value]
     return newPost
@@ -132,6 +162,70 @@ export function useCommunityPosts() {
     posts.value = posts.value.filter((post) => post.id !== Number(id))
   }
 
+  function isLiked(id) {
+    return likedPostIds.value.has(Number(id))
+  }
+
+  function toggleLike(id) {
+    const post = getPostById(id)
+    if (!post) return
+
+    const numId = Number(id)
+    const nextLiked = new Set(likedPostIds.value)
+
+    if (nextLiked.has(numId)) {
+      nextLiked.delete(numId)
+      post.likes = Math.max(0, (post.likes || 0) - 1)
+    } else {
+      nextLiked.add(numId)
+      post.likes = (post.likes || 0) + 1
+    }
+
+    likedPostIds.value = nextLiked
+  }
+
+  function getComment(postId, commentId) {
+    const post = getPostById(postId)
+    if (!post || !post.comments) return null
+    return post.comments.find((c) => c.id === Number(commentId)) || null
+  }
+
+  async function addComment(postId, content, password) {
+    const post = getPostById(postId)
+    if (!post) return
+    if (!post.comments) post.comments = []
+
+    const passwordHash = await hashPassword(password)
+
+    post.comments.push({
+      id: Date.now(),
+      nickname: randomNickname(),
+      content,
+      passwordHash,
+      createdAt: new Date().toISOString(),
+      updatedAt: null,
+    })
+  }
+
+  async function verifyCommentPassword(postId, commentId, password) {
+    const comment = getComment(postId, commentId)
+    if (!comment || !comment.passwordHash) return false
+    return checkPassword(password, comment.passwordHash)
+  }
+
+  function updateComment(postId, commentId, content) {
+    const comment = getComment(postId, commentId)
+    if (!comment) return
+    comment.content = content
+    comment.updatedAt = new Date().toISOString()
+  }
+
+  function deleteComment(postId, commentId) {
+    const post = getPostById(postId)
+    if (!post || !post.comments) return
+    post.comments = post.comments.filter((c) => c.id !== Number(commentId))
+  }
+
   return {
     posts,
     addPost,
@@ -140,5 +234,11 @@ export function useCommunityPosts() {
     verifyPostPassword,
     updatePost,
     deletePost,
+    isLiked,
+    toggleLike,
+    addComment,
+    verifyCommentPassword,
+    updateComment,
+    deleteComment,
   }
 }

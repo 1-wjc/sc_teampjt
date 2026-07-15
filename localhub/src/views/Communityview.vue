@@ -50,7 +50,8 @@
             </div>
             <span class="post-item__title">{{ post.title }}</span>
             <span class="post-item__meta">
-              {{ post.nickname }} · {{ formatDate(post.createdAt) }} · 조회 {{ post.views }}
+              {{ post.nickname }} · {{ formatDate(post.createdAt) }} · 조회 {{ post.views }} ·
+              좋아요 {{ post.likes || 0 }} · 댓글 {{ post.comments?.length || 0 }}
             </span>
           </div>
           <span class="post-item__arrow">›</span>
@@ -160,6 +161,18 @@
         </div>
         <p class="detail__content">{{ selectedPost.content }}</p>
 
+        <div class="like-row">
+          <button
+            type="button"
+            class="like-btn"
+            :class="{ 'like-btn--active': isLiked(selectedPost.id) }"
+            @click="toggleLike(selectedPost.id)"
+          >
+            <span class="like-btn__icon">{{ isLiked(selectedPost.id) ? '❤️' : '🤍' }}</span>
+            좋아요 {{ selectedPost.likes || 0 }}
+          </button>
+        </div>
+
         <div v-if="!showPasswordPrompt" class="detail__actions">
           <button type="button" class="btn btn--ghost" @click="requestAction('edit')">수정</button>
           <button type="button" class="btn btn--danger" @click="requestAction('delete')">삭제</button>
@@ -177,6 +190,93 @@
           <button type="button" class="btn btn--ghost" @click="cancelPasswordPrompt">취소</button>
           <p v-if="passwordError" class="form-error">{{ passwordError }}</p>
         </div>
+
+        <div class="comment-section">
+          <h3 class="comment-section__title">
+            댓글 {{ selectedPost.comments?.length || 0 }}
+          </h3>
+
+          <form class="comment-form" @submit.prevent="handleAddComment">
+            <input
+              v-model="commentInput"
+              type="text"
+              class="comment-form__input"
+              placeholder="댓글을 입력하세요"
+              maxlength="200"
+            />
+            <input
+              v-model="commentPasswordInput"
+              type="password"
+              class="comment-form__password"
+              placeholder="비밀번호 (4자 이상)"
+              minlength="4"
+            />
+            <button type="submit" class="btn btn--primary">등록</button>
+          </form>
+          <p v-if="commentFormError" class="form-error">{{ commentFormError }}</p>
+
+          <ul v-if="selectedPost.comments && selectedPost.comments.length > 0" class="comment-list">
+            <li v-for="comment in selectedPost.comments" :key="comment.id" class="comment-item">
+              <div class="comment-item__header">
+                <span class="comment-item__nickname">{{ comment.nickname }}</span>
+                <span class="comment-item__date">{{ formatDate(comment.createdAt) }}</span>
+                <template v-if="comment.updatedAt">
+                  <span class="comment-item__date">(수정됨)</span>
+                </template>
+
+                <template v-if="editingCommentId !== comment.id && commentPendingAction?.commentId !== comment.id">
+                  <button
+                    type="button"
+                    class="comment-item__action"
+                    @click="requestCommentAction(comment.id, 'edit')"
+                  >
+                    수정
+                  </button>
+                  <button
+                    type="button"
+                    class="comment-item__action comment-item__action--danger"
+                    @click="requestCommentAction(comment.id, 'delete')"
+                  >
+                    삭제
+                  </button>
+                </template>
+              </div>
+
+              <!-- 댓글 비밀번호 확인 -->
+              <div
+                v-if="commentPendingAction?.commentId === comment.id"
+                class="comment-password-prompt"
+              >
+                <input
+                  v-model="commentPasswordCheckInput"
+                  type="password"
+                  class="comment-form__password"
+                  placeholder="댓글 비밀번호를 입력하세요"
+                  @keyup.enter="confirmCommentPassword"
+                />
+                <button type="button" class="btn btn--primary" @click="confirmCommentPassword">확인</button>
+                <button type="button" class="btn btn--ghost" @click="cancelCommentPasswordPrompt">취소</button>
+                <p v-if="commentPasswordError" class="form-error">{{ commentPasswordError }}</p>
+              </div>
+
+              <!-- 댓글 수정 폼 -->
+              <div v-else-if="editingCommentId === comment.id" class="comment-edit-form">
+                <input
+                  v-model="editingCommentContent"
+                  type="text"
+                  class="comment-form__input"
+                  maxlength="200"
+                  @keyup.enter="handleUpdateComment"
+                />
+                <button type="button" class="btn btn--primary" @click="handleUpdateComment">저장</button>
+                <button type="button" class="btn btn--ghost" @click="cancelEditComment">취소</button>
+              </div>
+
+              <p v-else class="comment-item__content">{{ comment.content }}</p>
+            </li>
+          </ul>
+          <p v-else class="comment-empty">아직 댓글이 없습니다. 첫 댓글을 남겨보세요!</p>
+        </div>
       </div>
     </section>
   </main>
@@ -191,8 +291,21 @@ import { BOARD_MAIN_CATEGORIES, BOARD_SUB_CATEGORIES } from '../config/boardCate
 const route = useRoute()
 const router = useRouter()
 
-const { posts, addPost, getPostById, increaseView, verifyPostPassword, updatePost, deletePost } =
-  useCommunityPosts()
+const {
+  posts,
+  addPost,
+  getPostById,
+  increaseView,
+  verifyPostPassword,
+  updatePost,
+  deletePost,
+  isLiked,
+  toggleLike,
+  addComment,
+  verifyCommentPassword,
+  updateComment,
+  deleteComment,
+} = useCommunityPosts()
 
 const mode = ref('list') // 'list' | 'write' | 'detail' | 'edit'
 const titleInput = ref('')
@@ -207,6 +320,20 @@ const showPasswordPrompt = ref(false)
 const pendingAction = ref(null) // 'edit' | 'delete'
 const passwordCheckInput = ref('')
 const passwordError = ref('')
+
+// 댓글 작성
+const commentInput = ref('')
+const commentPasswordInput = ref('')
+const commentFormError = ref('')
+
+// 댓글 수정/삭제 (비밀번호 확인)
+const commentPendingAction = ref(null) // { commentId, action: 'edit' | 'delete' }
+const commentPasswordCheckInput = ref('')
+const commentPasswordError = ref('')
+
+// 댓글 수정 입력
+const editingCommentId = ref(null)
+const editingCommentContent = ref('')
 
 const selectedPost = computed(() => (selectedId.value ? getPostById(selectedId.value) : null))
 
@@ -223,6 +350,7 @@ function subCategoryLabel(key) {
 function openPost(id) {
   selectedId.value = id
   increaseView(id)
+  resetCommentState()
   mode.value = 'detail'
 }
 
@@ -329,11 +457,93 @@ async function confirmPassword() {
   }
 }
 
+// 댓글 작성
+async function handleAddComment() {
+  commentFormError.value = ''
+  const content = commentInput.value.trim()
+
+  if (!content) {
+    commentFormError.value = '댓글 내용을 입력해주세요.'
+    return
+  }
+  if (commentPasswordInput.value.length < 4) {
+    commentFormError.value = '비밀번호는 4자 이상 입력해주세요.'
+    return
+  }
+
+  await addComment(selectedId.value, content, commentPasswordInput.value)
+  commentInput.value = ''
+  commentPasswordInput.value = ''
+}
+
+// 댓글 수정/삭제 요청 (비밀번호 확인 프롬프트 표시)
+function requestCommentAction(commentId, action) {
+  commentPendingAction.value = { commentId, action }
+  commentPasswordCheckInput.value = ''
+  commentPasswordError.value = ''
+}
+
+function cancelCommentPasswordPrompt() {
+  commentPendingAction.value = null
+  commentPasswordCheckInput.value = ''
+  commentPasswordError.value = ''
+}
+
+async function confirmCommentPassword() {
+  if (!commentPendingAction.value) return
+  const { commentId, action } = commentPendingAction.value
+
+  const ok = await verifyCommentPassword(selectedId.value, commentId, commentPasswordCheckInput.value)
+  if (!ok) {
+    commentPasswordError.value = '비밀번호가 일치하지 않습니다.'
+    return
+  }
+
+  if (action === 'delete') {
+    deleteComment(selectedId.value, commentId)
+    commentPendingAction.value = null
+    return
+  }
+
+  if (action === 'edit') {
+    const comment = selectedPost.value.comments.find((c) => c.id === commentId)
+    editingCommentId.value = commentId
+    editingCommentContent.value = comment ? comment.content : ''
+    commentPendingAction.value = null
+  }
+}
+
+function handleUpdateComment() {
+  const content = editingCommentContent.value.trim()
+  if (!content || !editingCommentId.value) return
+
+  updateComment(selectedId.value, editingCommentId.value, content)
+  editingCommentId.value = null
+  editingCommentContent.value = ''
+}
+
+function cancelEditComment() {
+  editingCommentId.value = null
+  editingCommentContent.value = ''
+}
+
+function resetCommentState() {
+  commentInput.value = ''
+  commentPasswordInput.value = ''
+  commentFormError.value = ''
+  commentPendingAction.value = null
+  commentPasswordCheckInput.value = ''
+  commentPasswordError.value = ''
+  editingCommentId.value = null
+  editingCommentContent.value = ''
+}
+
 function goToList() {
   selectedId.value = null
   resetForm()
   showPasswordPrompt.value = false
   pendingAction.value = null
+  resetCommentState()
   mode.value = 'list'
 }
 
@@ -682,5 +892,179 @@ function formatDate(isoString) {
 .password-prompt .form-error {
   flex-basis: 100%;
   text-align: right;
+}
+
+/* 좋아요 */
+.like-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 14px;
+}
+
+.like-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.like-btn:hover {
+  border-color: #f87171;
+}
+
+.like-btn--active {
+  border-color: #ef4444;
+  background: color-mix(in srgb, #ef4444 10%, white);
+  color: #b91c1c;
+}
+
+.like-btn__icon {
+  font-size: 14px;
+}
+
+/* 댓글 */
+.comment-section {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-border);
+}
+
+.comment-section__title {
+  margin: 0 0 12px;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.comment-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.comment-form__input {
+  flex: 1 1 200px;
+  font-family: inherit;
+  font-size: 13.5px;
+  padding: 9px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+}
+
+.comment-form__password {
+  flex: 0 1 160px;
+  font-family: inherit;
+  font-size: 13.5px;
+  padding: 9px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+}
+
+.comment-form__input:focus,
+.comment-form__password:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.comment-empty {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  padding: 12px 0;
+}
+
+.comment-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.comment-item {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.comment-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.comment-item__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.comment-item__nickname {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.comment-item__date {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+}
+
+.comment-item__action {
+  margin-left: auto;
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.comment-item__action + .comment-item__action {
+  margin-left: 8px;
+}
+
+.comment-item__action:hover {
+  text-decoration: underline;
+}
+
+.comment-item__action--danger:hover {
+  color: #b91c1c;
+}
+
+.comment-item__content {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #374151;
+  white-space: pre-wrap;
+}
+
+.comment-password-prompt,
+.comment-edit-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.comment-password-prompt .comment-form__password,
+.comment-edit-form .comment-form__input {
+  flex: 1 1 180px;
+}
+
+.comment-password-prompt .form-error {
+  flex-basis: 100%;
 }
 </style>
