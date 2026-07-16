@@ -1,8 +1,13 @@
 [build]
   base = "localhub"
-  # npm run build를 실행하기 전에 node_modules/.bin/vite에 실행 권한을 강제로 부여합니다.
   command = "chmod +x ./node_modules/.bin/vite && npm run build"
   publish = "dist"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
 
 [[redirects]]
   from = "/*"

@@ -62,7 +62,6 @@
 
 <script setup>
 import { ref, nextTick } from 'vue'
-import { buildContext } from '../../utils/chatbotContext.js'
 
 defineEmits(['close'])
 
@@ -78,17 +77,8 @@ const inputText = ref('')
 const isLoading = ref(false)
 const bodyRef = ref(null)
 
-// intent -> 표시용 라벨
-const INTENT_LABELS = {
-  festival: '축제/공연',
-  shopping: '쇼핑',
-  stay: '숙박',
-  culture: '문화시설',
-  leisure: '레포츠',
-  course: '여행코스',
-  attraction: '관광지',
-  general: '정보',
-}
+// OpenAI에 보낼 대화 이력 (system 메시지는 서버에서 관리)
+const conversationHistory = ref([])
 
 async function sendMessage() {
   const text = inputText.value.trim()
@@ -106,10 +96,24 @@ async function sendMessage() {
   isLoading.value = true
 
   try {
-    const context = await buildContext(text)
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: text,
+        history: conversationHistory.value,
+      }),
+    })
 
-    // uiItems에 lat/lng 포함 (chatbotContext.js에서 이미 제공됨)
-    const uiItems = (context.items || []).slice(0, 5).map((it) => ({
+    const data = await res.json()
+    if (!res.ok) {
+      throw new Error(data.error || '챗봇 서버 오류')
+    }
+
+    conversationHistory.value.push({ role: 'user', content: text })
+    conversationHistory.value.push({ role: 'assistant', content: data.reply })
+
+    const uiItems = (data.items || []).slice(0, 5).map((it) => ({
       id: it.id,
       image: it.firstimage || '',
       name: it.title || '',
@@ -118,54 +122,19 @@ async function sendMessage() {
       lng: it.lng ?? null,
     }))
 
-    const intentLabel = INTENT_LABELS[context.intent] || context.intent || '정보'
-    const districtShort = context.district ? context.district.replace(/구$/, '') : ''
-
-    let replyText = ''
-    if (uiItems.length > 0) {
-      if (districtShort) {
-        replyText = `${districtShort} 근처 ${intentLabel} 장소들을 추천해 드리겠습니다!`
-      } else {
-        replyText = `요청하신 ${intentLabel} 장소들을 추천해 드리겠습니다!`
-      }
-    } else {
-      if (districtShort) {
-        replyText = `${districtShort} 관련 ${intentLabel} 데이터가 없습니다. 데이터 업로드/상세요청/웹검색 허용 중 선택해주세요.`
-      } else {
-        replyText = `${intentLabel} 관련 데이터가 없습니다. 데이터 업로드/상세요청/웹검색 허용 중 선택해주세요.`
-      }
-    }
-
-    // 서버(LLM)에는 전체 항목을 보내지 않음 — 요약만 전송(선택)
-    try {
-      fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          contextSummary: {
-            intent: context.intent,
-            district: context.district,
-            count: uiItems.length,
-            names: uiItems.map((i) => i.name),
-          },
-        }),
-      }).catch(() => {})
-    } catch (e) {}
-
     if (uiItems.length === 0) {
       messages.value.push({
         id: Date.now() + 1,
         role: 'bot',
         type: 'text',
-        text: replyText,
+        text: data.reply,
       })
     } else {
       messages.value.push({
         id: Date.now() + 1,
         role: 'bot',
         type: 'results',
-        text: replyText,
+        text: data.reply,
         items: uiItems,
       })
     }

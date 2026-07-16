@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { runChat } from './netlify/functions/_shared/chatCore.js'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -24,50 +25,16 @@ export default defineConfig(({ mode }) => {
 
             req.on('end', async () => {
               try {
-                const { message, context } = JSON.parse(body)
-
-                const systemPrompt = `당신은 서울 지역정보 안내 챗봇입니다. 아래 데이터만 근거로 답변하세요:\n${JSON.stringify(
-                  context?.items ?? [],
-                )}`
-
-                const openaiRes = await fetch(
-                  'https://api.openai.com/v1/chat/completions',
-                  {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      Authorization: `Bearer ${env.OPEN_API_KEY}`,
-                    },
-                    body: JSON.stringify({
-                      model: 'gpt-5-mini',
-                      messages: [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: message },
-                      ],
-                    }),
-                  },
-                )
-
-                const data = await openaiRes.json()
-
-                if (!openaiRes.ok) {
-                  res.statusCode = openaiRes.status
-                  res.setHeader('Content-Type', 'application/json')
-                  res.end(
-                    JSON.stringify({
-                      error: data.error?.message || 'OpenAI API 요청 실패',
-                    }),
-                  )
-                  return
-                }
-
-                const reply =
-                  data.choices?.[0]?.message?.content ??
-                  '응답을 생성하지 못했어요.'
+                const { message, history } = JSON.parse(body)
+                const result = await runChat({
+                  message,
+                  history,
+                  apiKey: env.OPEN_API_KEY,
+                })
 
                 res.statusCode = 200
                 res.setHeader('Content-Type', 'application/json')
-                res.end(JSON.stringify({ reply }))
+                res.end(JSON.stringify(result))
               } catch (err) {
                 res.statusCode = 500
                 res.setHeader('Content-Type', 'application/json')
