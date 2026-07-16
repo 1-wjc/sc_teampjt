@@ -1,8 +1,8 @@
 import { CATEGORY_CONFIG } from './mapCategories'
 
-// 대분류: 지도에 표시되는 마커 카테고리 (여행코스 + 지역 정보 카테고리)
+// 대분류: 지도에 표시되는 마커 카테고리 (여행 스팟 + 지역 정보 카테고리)
 export const BOARD_MAIN_CATEGORIES = [
-  { key: 'travel', label: '여행코스', color: '#e74c3c' },
+  { key: 'travel', label: '여행 스팟', color: '#e74c3c' },
   ...CATEGORY_CONFIG,
 ]
 

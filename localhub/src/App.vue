@@ -10,7 +10,7 @@ import ChatbotWidget from './components/chatbot/ChatbotWidget.vue'
           <span class="app-header__logo-badge">📍</span>
           <span class="app-header__logo-text">LocalHub</span>
         </router-link>
-        <span class="app-header__tagline">서울 여행코스 & 주변 정보 지도</span>
+        <span class="app-header__tagline">서울 여행 스팟 & 주변 정보 지도</span>
 
         <nav class="app-nav">
           <router-link to="/" class="app-nav__link" exact-active-class="app-nav__link--active">

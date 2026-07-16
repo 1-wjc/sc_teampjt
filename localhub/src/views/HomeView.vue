@@ -3,9 +3,9 @@
     <section class="hero">
       <div class="hero__content">
         <span class="hero__eyebrow">SEOUL TRAVEL MAP</span>
-        <h1 class="hero__title">서울 여행코스 지도</h1>
+        <h1 class="hero__title">서울 여행 스팟 지도</h1>
         <p class="hero__subtitle">
-          원하는 여행코스를 선택하고, 주변의 관광지·맛집·숙소 정보를 함께 확인해보세요.
+          원하는 여행 스팟을 선택하고, 주변의 관광지·맛집·숙소 정보를 함께 확인해보세요.
         </p>
       </div>
       <button type="button" class="refresh-btn" @click="handleReset">
@@ -20,7 +20,7 @@
         <label class="category-chip category-chip--fixed">
           <input type="checkbox" checked disabled />
           <span class="category-chip__dot" style="background:#e74c3c"></span>
-          여행코스 (필수)
+          여행 스팟 (필수)
         </label>
 
         <label
@@ -43,7 +43,7 @@
         <div class="map-card__legend">
           <span class="map-card__legend-item">
             <span class="map-card__legend-dot" style="background:#e74c3c"></span>
-            여행코스
+            여행 스팟
           </span>
           <span
             v-for="cat in CATEGORY_CONFIG"
@@ -80,7 +80,7 @@
               >
                 {{ selectedDetail.cat.label }}
               </span>
-              <span v-else class="detail-panel__badge detail-panel__badge--travel">여행코스</span>
+              <span v-else class="detail-panel__badge detail-panel__badge--travel">여행 스팟</span>
             </div>
 
             <h3 class="detail-panel__title">{{ selectedDetail.point.title }}</h3>
