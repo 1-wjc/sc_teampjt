@@ -89,6 +89,15 @@
               ✏️ 이 장소로 커뮤니티 글쓰기
             </button>
 
+            <a
+              :href="directionsUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="detail-panel__direction-btn"
+            >
+              🧭 카카오맵으로 길찾기
+            </a>
+
             <template v-if="selectedDetail.cat?.key === 'festival'">
               <p v-if="selectedDetail.point.eventPlace" class="detail-panel__line">
                 {{ selectedDetail.point.eventPlace }}
@@ -194,6 +203,15 @@ function goToWritePost() {
     },
   })
 }
+
+// 상세 패널에서 선택된 장소를 목적지로 하는 카카오맵 길찾기 링크
+// (출발지는 지정하지 않으므로 카카오맵/앱이 사용자의 현재 위치를 출발지로 사용)
+const directionsUrl = computed(() => {
+  if (!selectedDetail.value) return '#'
+  const { title, lat, lng } = selectedDetail.value.point
+  if (lat == null || lng == null) return '#'
+  return `https://map.kakao.com/link/to/${encodeURIComponent(title || '목적지')},${lat},${lng}`
+})
 
 const nearbyGroups = computed(() => {
   if (!selectedDetail.value) return []
@@ -547,6 +565,27 @@ onBeforeUnmount(() => {
 
 .detail-panel__write-btn:hover {
   background: color-mix(in srgb, var(--color-primary) 15%, white);
+}
+
+.detail-panel__direction-btn {
+  display: block;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid #f4c800;
+  border-radius: 8px;
+  background: #fee500;
+  color: #191919;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.detail-panel__direction-btn:hover {
+  background: #fddc00;
 }
 
 .detail-panel__line {
