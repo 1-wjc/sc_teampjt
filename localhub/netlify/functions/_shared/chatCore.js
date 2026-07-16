@@ -1,10 +1,11 @@
 // netlify/functions/_shared/chatCore.js
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const DATA_DIR = path.resolve(__dirname, '../../../public/data/서울')
+// Netlify(esbuild)가 이 파일을 chat.js와 하나로 번들링하면서 원래의 _shared 폴더 구조가 사라진다.
+// import.meta.url 기반 상대 경로는 번들링 후 깨지므로, 함수 실행 루트(process.cwd())를 기준으로 찾는다.
+// (included_files로 포함된 파일은 base 디렉터리 기준 경로 그대로 함수 루트에 배치된다)
+const DATA_DIR = path.join(process.cwd(), 'public/data/서울')
 
 const DATA_FILES = {
   festival: '서울_축제공연행사.json',
