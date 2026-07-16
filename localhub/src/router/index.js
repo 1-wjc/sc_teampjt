@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
-import CommunityView from '../views/CommunityView.vue'
+import CommunityView from '../views/Communityview.vue'
 import CalendarView from '../views/CalendarView.vue'
 
 const router = createRouter({
