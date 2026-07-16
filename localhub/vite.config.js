@@ -30,6 +30,7 @@ export default defineConfig(({ mode }) => {
                   message,
                   history,
                   apiKey: env.OPEN_API_KEY,
+                  kakaoApiKey: env.KAKAO_REST_API_KEY,
                 })
 
                 res.statusCode = 200

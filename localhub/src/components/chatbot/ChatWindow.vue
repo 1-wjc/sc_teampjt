@@ -41,6 +41,19 @@
             </div>
           </div>
         </div>
+
+        <!-- 길찾기 링크 -->
+        <div v-else-if="msg.type === 'link'" class="link-block">
+          <div class="result-intro">{{ msg.text }}</div>
+          <a
+            :href="msg.link.url"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="direction-link"
+          >
+            🧭 {{ msg.link.from }} → {{ msg.link.to }} 카카오맵 길찾기 열기
+          </a>
+        </div>
       </div>
 
       <div v-if="isLoading" class="chat-message chat-message--bot">
@@ -113,30 +126,40 @@ async function sendMessage() {
     conversationHistory.value.push({ role: 'user', content: text })
     conversationHistory.value.push({ role: 'assistant', content: data.reply })
 
-    const uiItems = (data.items || []).slice(0, 5).map((it) => ({
-      id: it.id,
-      image: it.firstimage || '',
-      name: it.title || '',
-      addr: it.addr1 || '',
-      lat: it.lat ?? null,
-      lng: it.lng ?? null,
-    }))
-
-    if (uiItems.length === 0) {
+    if (data.link?.url) {
       messages.value.push({
         id: Date.now() + 1,
         role: 'bot',
-        type: 'text',
+        type: 'link',
         text: data.reply,
+        link: data.link,
       })
     } else {
-      messages.value.push({
-        id: Date.now() + 1,
-        role: 'bot',
-        type: 'results',
-        text: data.reply,
-        items: uiItems,
-      })
+      const uiItems = (data.items || []).slice(0, 5).map((it) => ({
+        id: it.id,
+        image: it.firstimage || '',
+        name: it.title || '',
+        addr: it.addr1 || '',
+        lat: it.lat ?? null,
+        lng: it.lng ?? null,
+      }))
+
+      if (uiItems.length === 0) {
+        messages.value.push({
+          id: Date.now() + 1,
+          role: 'bot',
+          type: 'text',
+          text: data.reply,
+        })
+      } else {
+        messages.value.push({
+          id: Date.now() + 1,
+          role: 'bot',
+          type: 'results',
+          text: data.reply,
+          items: uiItems,
+        })
+      }
     }
   } catch (err) {
     console.error(err)
@@ -299,6 +322,28 @@ async function scrollToBottom() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.link-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.direction-link {
+  display: inline-block;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background-color: #fee500;
+  color: #191919;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  align-self: flex-start;
+}
+
+.direction-link:hover {
+  filter: brightness(0.95);
 }
 
 .chat-input {

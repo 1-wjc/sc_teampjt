@@ -12,6 +12,7 @@ export const handler = async (event) => {
       message,
       history,
       apiKey: process.env.OPEN_API_KEY,
+      kakaoApiKey: process.env.KAKAO_REST_API_KEY,
     })
 
     return {
